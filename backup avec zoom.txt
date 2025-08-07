@@ -1,0 +1,122 @@
+// Dans lib/screens/pdf_viewer_screen.dart, à l'intérieur de la méthode build()
+
+@override
+Widget build(BuildContext context) {
+  return Scaffold(
+    appBar: AppBar(
+      title: const Text('Visionneuse de PDF'),
+      actions: [
+        IconButton(
+          icon: Icon(
+            Icons.draw,
+            color: _currentMode == AnnotationMode.freehand ? Colors.blue : Colors.black,
+          ),
+          onPressed: () => _setCurrentMode(
+            _currentMode == AnnotationMode.freehand ? AnnotationMode.none : AnnotationMode.freehand,
+          ),
+        ),
+        IconButton(
+          icon: Icon(
+            Icons.text_fields,
+            color: _currentMode == AnnotationMode.text ? Colors.blue : Colors.black,
+          ),
+          onPressed: () => _setCurrentMode(
+            _currentMode == AnnotationMode.text ? AnnotationMode.none : AnnotationMode.text,
+          ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.undo),
+          onPressed: _undoLastAnnotation,
+        ),
+      ],
+    ),
+    body: Stack(
+      children: [
+        // Le lecteur PDF est la seule couche active en mode normal.
+        SfPdfViewer.memory(
+          widget.pdfBytes,
+          controller: _pdfViewerController,
+          pageLayoutMode: PdfPageLayoutMode.continuous,
+          onPageChanged: (details) {
+            setState(() {
+              _currentPage = details.newPageNumber;
+            });
+          },
+          onZoomLevelChanged: (details) {
+            setState(() {
+              _currentScale = details.newZoomLevel;
+            });
+          },
+        ),
+        // La couche d'annotations est rendue UNIQUEMENT lorsque le mode d'annotation est actif.
+        if (_currentMode != AnnotationMode.none)
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onPanStart: _currentMode == AnnotationMode.freehand ? (details) {
+                _currentLine = my_annotations.FreehandAnnotation(
+                  points: [_getTransformedPoint(details.localPosition)],
+                  pageIndex: _currentPage,
+                );
+              } : null,
+              onPanUpdate: _currentMode == AnnotationMode.freehand ? (details) {
+                final updatedPoints = List<Offset>.from(_currentLine.points)
+                  ..add(_getTransformedPoint(details.localPosition));
+                setState(() {
+                  _currentLine = my_annotations.FreehandAnnotation(
+                    points: updatedPoints,
+                    pageIndex: _currentPage,
+                  );
+                });
+              } : null,
+              onPanEnd: _currentMode == AnnotationMode.freehand ? (details) {
+                if (_currentLine.points.isNotEmpty) {
+                  final updatedAnnotations = Map<int, List<my_annotations.Annotation>>.from(_annotations);
+                  final updatedList = List<my_annotations.Annotation>.from(updatedAnnotations[_currentPage] ?? []);
+                  updatedList.add(_currentLine);
+                  updatedAnnotations[_currentPage] = updatedList;
+
+                  setState(() {
+                    _annotations = updatedAnnotations;
+                    _currentLine = my_annotations.FreehandAnnotation(points: [], pageIndex: _currentPage);
+                  });
+                  _saveAnnotations();
+                }
+              } : null,
+              onTapUp: _currentMode == AnnotationMode.text ? (details) async {
+                final enteredText = await _showTextInputDialog(details.localPosition);
+                if (enteredText != null && enteredText.isNotEmpty) {
+                  final newAnnotation = my_annotations.TextAnnotation(
+                    text: enteredText,
+                    position: _getTransformedPoint(details.localPosition),
+                    pageIndex: _currentPage,
+                  );
+
+                  final updatedAnnotations = Map<int, List<my_annotations.Annotation>>.from(_annotations);
+                  final updatedList = List<my_annotations.Annotation>.from(updatedAnnotations[_currentPage] ?? []);
+                  updatedList.add(newAnnotation);
+                  updatedAnnotations[_currentPage] = updatedList;
+
+                  setState(() {
+                    _annotations = updatedAnnotations;
+                  });
+                  _saveAnnotations();
+                }
+              } : null,
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  painter: AnnotationPainter(
+                    annotations: _annotations,
+                    currentPage: _currentPage,
+                    currentLine: _currentLine,
+                    scale: _currentScale,
+                    translation: _currentTranslation,
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    ),
+  );
+}
