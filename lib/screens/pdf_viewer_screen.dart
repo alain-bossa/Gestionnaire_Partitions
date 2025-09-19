@@ -5,6 +5,7 @@ import 'package:music_pdf/models/annotation_models.dart' as my_annotations;
 import 'package:music_pdf/widgets/annotation_painter.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:html' as html;
 
 enum AnnotationMode { none, freehand, text }
 
@@ -216,6 +217,10 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             icon: const Icon(Icons.undo),
             onPressed: _undoLastAnnotation,
           ),
+          IconButton(
+            icon: const Icon(Icons.download),
+            onPressed: _downloadPdf,
+          ),
         ],
       ),
       body: Stack(
@@ -327,5 +332,40 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _downloadPdf() async {
+    try {
+      // 1. Convertir les données du PDF en un "blob"
+      final blob = html.Blob([widget.pdfBytes], 'application/pdf');
+
+      // 2. Créer une URL temporaire pour le blob
+      final url = html.Url.createObjectUrlFromBlob(blob);
+
+      // 3. Créer un élément de lien (a) et simuler un clic
+      final anchor = html.document.createElement('a') as html.AnchorElement
+        ..href = url
+        ..style.display = 'none' // Le rendre invisible
+        ..download = 'mon_document.pdf'; // Nom par défaut du fichier
+
+      // 4. Ajouter le lien au DOM et déclencher le téléchargement
+      html.document.body?.children.add(anchor);
+      anchor.click();
+
+      // 5. Nettoyer
+      html.document.body?.children.remove(anchor);
+      html.Url.revokeObjectUrl(url);
+
+      // Afficher un message de succès (optionnel)
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Fichier téléchargé avec succès.'),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Échec du téléchargement : $e')),
+      );
+    }
   }
 }
